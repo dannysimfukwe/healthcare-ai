@@ -70,14 +70,14 @@ LANDING_PAGE = """
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
-    <header class="gradient-bg text-white py-6">
+    <header class="bg-black text-white py-6">
         <div class="max-w-6xl mx-auto px-4 flex justify-between items-center">
             <div>
                 <h1 class="text-2xl font-bold">{title}</h1>
-                <p class="text-orange-100 text-sm mt-1">AI-Powered Assistant</p>
+                <p class="text-orange-400 text-sm mt-1">AI-Powered Assistant</p>
             </div>
             <a href="{repo_url}" target="_blank"
-               class="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition">
+               class="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded-lg transition">
                 <i class="fab fa-github"></i>
                 <span>Download Code</span>
             </a>
