@@ -6,7 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-ENV OLLAMA_BASE_URL=https://ai-api.42helv.com/v1
+ENV AI_API_URL=https://ai-api.42helv.com/v1
+ENV AI_API_BASE_URL=https://ai-api.42helv.com
 ENV DB_HOST=db
 ENV DB_PORT=5432
 ENV RAG_MODE=true

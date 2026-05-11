@@ -28,7 +28,8 @@ class ChatResponse(BaseModel):
     language: str
     confidence: float
 
-OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "https://ai-api.42helv.com/v1")
+AI_API_URL = os.getenv("AI_API_URL", "https://ai-api.42helv.com/v1")
+AI_API_BASE_URL = os.getenv("AI_API_BASE_URL", "https://ai-api.42helv.com")
 AI_TYPE = os.getenv("AI_TYPE", "medical_assistant")
 BASE_URL = os.getenv("SITE_BASE_URL", "")
 API_KEY = os.getenv("AI_API_KEY", "")
@@ -155,7 +156,7 @@ LANDING_PAGE = """
                             <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto">import httpx
 
 response = httpx.post(
-    "{base_url}/v1/chat/completions",
+    "{api_base_url}/v1/chat/completions",
     headers={{"X-API-Key": "YOUR_API_KEY"}},
     json={{
         "model": "llama3.2",
@@ -166,7 +167,7 @@ print(response.json())</pre>
                         </div>
                         <div>
                             <p class="text-xs font-semibold text-gray-500 mb-1">cURL</p>
-                            <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto">curl -X POST "{base_url}/v1/chat/completions" \
+                            <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto">curl -X POST "{api_base_url}/v1/chat/completions" \
   -H "X-API-Key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{{"model": "llama3.2", "messages": [{{"role": "user", "content": "Hello"}}]}}'</pre>
@@ -182,7 +183,7 @@ print(response.json())</pre>
     </footer>
 
     <script>
-        const baseUrl = '{base_url}';
+        const apiBaseUrl = '{api_base_url}';
         const messagesDiv = document.getElementById('messages');
         const chatForm = document.getElementById('chatForm');
         const messageInput = document.getElementById('messageInput');
@@ -234,7 +235,7 @@ print(response.json())</pre>
                 const headers = {{ 'Content-Type': 'application/json' }};
                 const apiKey = localStorage.getItem('ai_api_key') || '';
                 if (apiKey) headers['X-API-Key'] = apiKey;
-                const res = await fetch(baseUrl + '/v1/chat/completions', {{
+                const res = await fetch(apiBaseUrl + '/v1/chat/completions', {{
                     method: 'POST',
                     headers,
                     body: JSON.stringify({{
@@ -325,7 +326,12 @@ REPO_URL = "https://github.com/dannysimfukwe/healthcare-ai"
 @app.get("/", response_class=HTMLResponse)
 async def landing_page():
     title = AI_TITLES.get(AI_TYPE, "Healthcare AI")
-    html = LANDING_PAGE.format(title=title, repo_url=REPO_URL, base_url=BASE_URL)
+    html = LANDING_PAGE.format(
+        title=title,
+        repo_url=REPO_URL,
+        base_url=BASE_URL,
+        api_base_url=AI_API_BASE_URL
+    )
     return HTMLResponse(content=html)
 
 @app.get("/widget.js")
@@ -357,7 +363,7 @@ async def chat_completions(request: Request):
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
-                f"{OLLAMA_URL}/chat/completions",
+                f"{AI_API_URL}/chat/completions",
                 headers=headers,
                 json={"model": model, "messages": full_messages, "temperature": temperature}
             )
@@ -370,7 +376,7 @@ async def chat_completions(request: Request):
             else:
                 return {"error": f"AI service error {response.status_code}", "detail": response.text[:500]}
     except httpx.ConnectError as e:
-        return {"error": f"Connection failed to {OLLAMA_URL}. Is the service reachable?", "detail": str(e)}
+        return {"error": f"Connection failed to {AI_API_URL}. Is the service reachable?", "detail": str(e)}
     except httpx.TimeoutException:
         return {"error": "AI service timed out after 120s"}
     except Exception as e:
@@ -402,7 +408,7 @@ async def call_ollama(prompt: str, context: str, api_key: str = None) -> str:
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
-                f"{OLLAMA_URL}/chat/completions",
+                f"{AI_API_URL}/chat/completions",
                 headers=headers,
                 json={
                     "model": "llama3.2",
