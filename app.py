@@ -1,7 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
+from typing import Optional, List, Dict
 import os
+import httpx
 import json
 
 app = FastAPI(title="Healthcare AI", version="1.0.0")
@@ -25,23 +28,295 @@ class ChatResponse(BaseModel):
     confidence: float
 
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+AI_TYPE = os.getenv("AI_TYPE", "medical_assistant")
+BASE_URL = os.getenv("SITE_BASE_URL", "")
 
-@app.get("/")
-async def root():
-    return {"status": "ok", "service": "Healthcare AI", "version": "1.0.0"}
+AI_TITLES = {
+    "medical_assistant": "Medical Assistant",
+    "clinic_copilot": "Clinic Copilot",
+    "transcription": "Transcription System",
+    "triage": "Triage System",
+    "pharmacy": "Pharmacy Assistant",
+    "hospital_search": "Hospital Search"
+}
+
+LANDING_PAGE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title} - AI Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {{ font-family: 'Inter', sans-serif; }}
+        .gradient-bg {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }}
+        .chat-container {{ height: 400px; }}
+        .messages {{ height: 340px; overflow-y: auto; }}
+        .message-ai {{ background: #f3f4f6; }}
+        .message-user {{ background: #667eea; color: white; }}
+        .typing-dot {{ animation: bounce 1.4s infinite ease-in-out both; }}
+        .typing-dot:nth-child(1) {{ animation-delay: -0.32s; }}
+        .typing-dot:nth-child(2) {{ animation-delay: -0.16s; }}
+        @keyframes bounce {{ 0%, 80%, 100% {{ transform: scale(0); }} 40% {{ transform: scale(1); }} }}
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <header class="gradient-bg text-white py-6">
+        <div class="max-w-6xl mx-auto px-4 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold">{title}</h1>
+                <p class="text-purple-100 text-sm mt-1">AI-Powered Assistant</p>
+            </div>
+            <a href="{repo_url}" target="_blank"
+               class="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition">
+                <i class="fab fa-github"></i>
+                <span>Download Code</span>
+            </a>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-8">
+        <div class="grid md:grid-cols-2 gap-8">
+            <div>
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                    <div class="gradient-bg px-4 py-3 text-white">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                                <i class="fas fa-robot"></i>
+                            </div>
+                            <div>
+                                <h2 class="font-semibold">{title}</h2>
+                                <p class="text-xs text-purple-100">Try it now</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-container p-4">
+                        <div id="messages" class="messages space-y-3 mb-4">
+                            <div class="flex justify-center">
+                                <span class="text-xs text-gray-400">Conversation started</span>
+                            </div>
+                        </div>
+                        <form id="chatForm" class="flex gap-2">
+                            <input type="text" id="messageInput"
+                                class="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                placeholder="Type your message..." required>
+                            <button type="submit"
+                                class="gradient-bg text-white px-6 py-2 rounded-lg hover:opacity-90 transition">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="mt-6 bg-white rounded-xl shadow p-6">
+                    <h3 class="font-semibold mb-4">Features</h3>
+                    <ul class="space-y-2 text-sm text-gray-600">
+                        <li class="flex items-center gap-2"><i class="fas fa-check text-green-500"></i> OpenAI-compatible API</li>
+                        <li class="flex items-center gap-2"><i class="fas fa-check text-green-500"></i> Supports Chichewa & English</li>
+                        <li class="flex items-center gap-2"><i class="fas fa-check text-green-500"></i> RAG-ready with pgvector</li>
+                        <li class="flex items-center gap-2"><i class="fas fa-check text-green-500"></i> GPU acceleration</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="space-y-6">
+                <div class="bg-white rounded-xl shadow p-6">
+                    <h3 class="font-semibold mb-4 flex items-center gap-2"><i class="fas fa-code"></i> Embed on Your Website</h3>
+                    <p class="text-sm text-gray-600 mb-4">Add this chat widget to any site:</p>
+                    <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs overflow-x-auto"><code>&lt;script src="{base_url}/widget.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  ChatWidget.init({{ apiUrl: '{base_url}/v1/chat/completions' }});
+&lt;/script&gt;</code></pre>
+                </div>
+
+                <div class="bg-white rounded-xl shadow p-6">
+                    <h3 class="font-semibold mb-4 flex items-center gap-2"><i class="fas fa-terminal"></i> API Quick Start</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <p class="text-xs font-semibold text-gray-500 mb-1">Python</p>
+                            <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs">import openai
+openai.api_base = "{base_url}/v1"
+response = openai.ChatCompletion.create(
+    model="llama3.2",
+    messages=[{{"role": "user", "content": "Hello"}}]
+)</pre>
+                        </div>
+                        <div>
+                            <p class="text-xs font-semibold text-gray-500 mb-1">cURL</p>
+                            <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs">curl -X POST "{base_url}/v1/chat/completions" \\
+  -d '{{"model": "llama3.2", "messages": [{{"role": "user", "content": "Hello"}}]}}'</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-purple-50 border border-purple-200 rounded-xl p-6">
+                    <h3 class="font-semibold text-purple-900 mb-2">Build Your Own</h3>
+                    <p class="text-sm text-purple-700 mb-4">Fork this template on GitHub, customize the AI behavior, and deploy your own assistant.</p>
+                    <a href="{repo_url}" target="_blank" class="inline-flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition text-sm">
+                        <i class="fab fa-github"></i> View on GitHub
+                    </a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="mt-12 py-6 text-center text-gray-400 text-sm">
+        <p>Powered by <span class="font-semibold">42helv</span> AI Infrastructure</p>
+    </footer>
+
+    <script>
+        const baseUrl = '{base_url}';
+        const messagesDiv = document.getElementById('messages');
+        const chatForm = document.getElementById('chatForm');
+        const messageInput = document.getElementById('messageInput');
+
+        function addMessage(content, isUser = false) {{
+            const div = document.createElement('div');
+            div.className = `flex ${{isUser ? 'justify-end' : 'justify-start'}}`;
+            div.innerHTML = `<div class="${{isUser ? 'message-user' : 'message-ai'}} px-4 py-2 rounded-lg max-w-[80%]">${{content}}</div>`;
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }}
+
+        function addTyping() {{
+            const div = document.createElement('div');
+            div.id = 'typing';
+            div.className = 'flex justify-start';
+            div.innerHTML = `<div class="message-ai px-4 py-2 rounded-lg"><div class="flex gap-1"><span class="typing-dot w-2 h-2 bg-gray-400 rounded-full"></span><span class="typing-dot w-2 h-2 bg-gray-400 rounded-full"></span><span class="typing-dot w-2 h-2 bg-gray-400 rounded-full"></span></div></div>`;
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }}
+
+        function removeTyping() {{
+            const t = document.getElementById('typing');
+            if (t) t.remove();
+        }}
+
+        chatForm.addEventListener('submit', async (e) => {{
+            e.preventDefault();
+            const msg = messageInput.value.trim();
+            if (!msg) return;
+            addMessage(msg, true);
+            messageInput.value = '';
+            addTyping();
+            try {{
+                const res = await fetch(baseUrl + '/chat', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ message: msg, language: 'en', context: 'general' }})
+                }});
+                const data = await res.json();
+                removeTyping();
+                addMessage(data.response || 'AI service unavailable');
+            }} catch (e) {{
+                removeTyping();
+                addMessage('Error connecting to AI service.');
+            }}
+        }});
+    </script>
+</body>
+</html>
+"""
+
+WIDGET_JS = """
+(function() {
+    window.ChatWidget = {
+        config: { apiUrl: '', title: 'AI Assistant', position: 'bottom-right' },
+        init: function(opts) {
+            this.config = { ...this.config, ...opts };
+            this.injectStyles();
+            this.createWidget();
+            document.getElementById('chatWidgetForm').onsubmit = (e) => {
+                e.preventDefault();
+                const inp = document.getElementById('chatWidgetInput');
+                const msg = inp.value.trim();
+                if (!msg) return;
+                this.addMessage(msg, true);
+                inp.value = '';
+                fetch(this.config.apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: 'llama3.2', messages: [{ role: 'user', content: msg }] })
+                }).then(r => r.json()).then(d => this.addMessage(d.choices[0].message.content)).catch(() => this.addMessage('Error'));
+            };
+        },
+        injectStyles: function() {
+            const s = document.createElement('style');
+            s.textContent = `
+                .chat-widget-btn { position: fixed; ${this.config.position}: 20px; bottom: 20px; width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); border: none; cursor: pointer; box-shadow: 0 4px 20px rgba(102,126,234,.4); z-index: 9999; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; }
+                .chat-widget-window { position: fixed; ${this.config.position}: 20px; bottom: 90px; width: 380px; height: 500px; background: white; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.15); z-index: 9998; display: none; flex-direction: column; overflow: hidden; }
+                .chat-widget-window.open { display: flex; }
+                .chat-widget-header { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 16px; display: flex; align-items: center; gap: 12px; }
+                .chat-widget-messages { flex: 1; overflow-y: auto; padding: 16px; }
+                .chat-widget-input { display: flex; padding: 16px; gap: 8px; border-top: 1px solid #eee; }
+                .chat-widget-input input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; }
+                .chat-widget-input button { background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; }
+            `;
+            document.head.appendChild(s);
+        },
+        createWidget: function() {
+            document.body.insertAdjacentHTML('beforeend', `
+                <button class="chat-widget-btn" id="chatWidgetBtn"><i class="fas fa-comments"></i></button>
+                <div class="chat-widget-window" id="chatWidgetWindow">
+                    <div class="chat-widget-header"><div style="width:40px;height:40px;background:rgba(255,255,255,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;"><i class="fas fa-robot"></i></div><div><div style="font-weight:600">${this.config.title}</div><div style="font-size:12px;opacity:.8">AI Assistant</div></div></div>
+                    <div class="chat-widget-messages" id="chatWidgetMessages"></div>
+                    <form class="chat-widget-input" id="chatWidgetForm"><input type="text" placeholder="Type a message..." id="chatWidgetInput" /><button type="submit"><i class="fas fa-paper-plane"></i></button></form>
+                </div>
+            `);
+            document.getElementById('chatWidgetBtn').onclick = () => document.getElementById('chatWidgetWindow').classList.toggle('open');
+        },
+        addMessage: function(content, isUser) {
+            const d = document.createElement('div');
+            d.style.cssText = `text-align:${isUser?'right':'left'};margin:8px 0;`;
+            d.innerHTML = `<span style="display:inline-block;padding:10px 14px;border-radius:12px;background:${isUser?'#667eea':'#f3f4f6'};color:${isUser?'white':'black'}">${content}</span>`;
+            document.getElementById('chatWidgetMessages').appendChild(d);
+            document.getElementById('chatWidgetMessages').scrollTop = document.getElementById('chatWidgetMessages').scrollHeight;
+        }
+    };
+})();
+"""
+
+REPO_URL = "https://github.com/dannysimfukwe/healthcare-ai"
+
+@app.get("/", response_class=HTMLResponse)
+async def landing_page():
+    title = AI_TITLES.get(AI_TYPE, "Healthcare AI")
+    html = LANDING_PAGE.format(title=title, repo_url=REPO_URL, base_url=BASE_URL)
+    return HTMLResponse(content=html)
+
+@app.get("/widget.js")
+async def widget_js():
+    return Response(content=WIDGET_JS, media_type="application/javascript")
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "rag_mode": os.getenv("RAG_MODE", "false")}
+    return {"status": "healthy", "ai_type": AI_TYPE}
 
-@app.post("/v1/chat/completions", response_model=ChatResponse)
+@app.post("/v1/chat/completions")
+async def chat_completions(request: Dict):
+    messages = request.get("messages", [])
+    model = request.get("model", "llama3.2")
+    system_prompt = f"You are a {AI_TITLES.get(AI_TYPE, 'healthcare')} assistant."
+    full_messages = [{"role": "system", "content": system_prompt}] + messages
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{OLLAMA_URL}/v1/chat/completions",
+                json={"model": model, "messages": full_messages}
+            )
+            if response.status_code == 200:
+                return response.json()
+    except Exception as e:
+        return {"error": f"AI service unavailable: {str(e)}"}
+    return {"error": "AI service not available"}
+
+@app.post("/chat")
 async def chat(request: ChatRequest):
     ollama_response = await call_ollama(request.message, request.context)
-    return ChatResponse(
-        response=ollama_response,
-        language=request.language,
-        confidence=0.85
-    )
+    return {"response": ollama_response, "language": request.language, "confidence": 0.85}
 
 @app.post("/clinical-notes")
 async def clinical_notes(text: str):
@@ -54,10 +329,8 @@ async def translate(text: str, from_lang: str = "en", to_lang: str = "ny"):
     return {"translated": translated, "from": from_lang, "to": to_lang}
 
 async def call_ollama(prompt: str, context: str) -> str:
-    system_prompt = f"You are a healthcare assistant. Context: {context}. Provide accurate, helpful medical information."
-    
+    system_prompt = f"You are a {AI_TITLES.get(AI_TYPE, 'healthcare')} assistant. Context: {context}. Provide accurate, helpful information."
     try:
-        import httpx
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f"{OLLAMA_URL}/v1/chat/completions",
@@ -74,24 +347,16 @@ async def call_ollama(prompt: str, context: str) -> str:
                 data = response.json()
                 return data["choices"][0]["message"]["content"]
     except Exception as e:
-        return f"AI service unavailable. Please ensure Ollama is running. Error: {str(e)}"
-    
-    return "AI service is not available. Please try again later."
+        return f"AI service unavailable. Error: {str(e)}"
+    return "AI service is not available."
 
 async def generate_clinical_notes(text: str) -> dict:
-    prompt = f"Convert this dictation into structured clinical notes: {text}"
-    notes = await call_ollama(prompt, "clinical documentation")
-    
-    return {
-        "chief_complaint": "Extracted from conversation",
-        "history": notes,
-        "assessment": "AI-generated summary",
-        "plan": "Pending physician review"
-    }
+    notes = await call_ollama(f"Convert this dictation into structured clinical notes: {text}", "clinical documentation")
+    return {"chief_complaint": "Extracted", "history": notes, "assessment": "AI-generated", "plan": "Pending review"}
 
 async def translate_text(text: str, from_lang: str, to_lang: str) -> str:
     lang_names = {"en": "English", "ny": "Chichewa", "tob": "Tumbuka"}
-    prompt = f"Translate the following from {lang_names.get(from_lang, from_lang)} to {lang_names.get(to_lang, to_lang)}: {text}"
+    prompt = f"Translate from {lang_names.get(from_lang, from_lang)} to {lang_names.get(to_lang, to_lang)}: {text}"
     return await call_ollama(prompt, "translation")
 
 if __name__ == "__main__":
