@@ -18,9 +18,10 @@ app.add_middleware(
 )
 
 class ChatRequest(BaseModel):
-    message: str
-    language: str = "en"
-    context: str = "general"
+    model: Optional[str] = "llama3.2"
+    messages: Optional[List[Dict]] = []
+    temperature: Optional[float] = 0.7
+    stream: Optional[bool] = False
 
 class ChatResponse(BaseModel):
     response: str
@@ -153,15 +154,21 @@ LANDING_PAGE = """
                             <p class="text-xs font-semibold text-gray-500 mb-1">Python</p>
                             <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto">import httpx
 
-response = httpx.post("{base_url}/v1/chat/completions", json={{
-    "model": "llama3.2",
-    "messages": [{{"role": "user", "content": "Hello"}}]
-}})
+response = httpx.post(
+    "{base_url}/v1/chat/completions",
+    headers={{"X-API-Key": "YOUR_API_KEY"}},
+    json={{
+        "model": "llama3.2",
+        "messages": [{{"role": "user", "content": "Hello"}}]
+    }}
+)
 print(response.json())</pre>
                         </div>
                         <div>
                             <p class="text-xs font-semibold text-gray-500 mb-1">cURL</p>
-                            <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto">curl -X POST "{base_url}/v1/chat/completions" \\
+                            <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto">curl -X POST "{base_url}/v1/chat/completions" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
   -d '{{"model": "llama3.2", "messages": [{{"role": "user", "content": "Hello"}}]}}'</pre>
                         </div>
                     </div>
@@ -197,7 +204,7 @@ print(response.json())</pre>
         function addMessage(content, isUser = false) {{
             const div = document.createElement('div');
             div.className = `flex ${{isUser ? 'justify-end' : 'justify-start'}}`;
-            div.innerHTML = `<div class="${{isUser ? 'message-user' : 'message-ai'}} px-4 py-2 rounded-lg max-w-[80%] break-words">${{content.replace(/\\n/g, '<br>')}}</div>`;
+            div.innerHTML = `<div class="${{isUser ? 'message-user' : 'message-ai'}} px-4 py-2 rounded-lg max-w-[80%] break-words">${{content.replace(/\n/g, '<br>')}}</div>`;
             messagesDiv.appendChild(div);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }}
@@ -232,15 +239,18 @@ print(response.json())</pre>
                     headers,
                     body: JSON.stringify({{
                         model: 'llama3.2',
-                        messages: [{{"role": "user", "content": msg}}]
+                        messages: [{{'role': 'user', 'content': msg}}],
+                        temperature: 0.7
                     }})
                 }});
                 const data = await res.json();
                 removeTyping();
-                if (data.choices && data.choices[0]) {{
+                if (data.choices && data.choices[0] && data.choices[0].message) {{
                     addMessage(data.choices[0].message.content);
+                }} else if (data.error) {{
+                    addMessage('Error: ' + data.error);
                 }} else {{
-                    addMessage(data.error || 'AI service unavailable');
+                    addMessage('AI service unavailable: ' + JSON.stringify(data));
                 }}
             }} catch (e) {{
                 removeTyping();
@@ -327,28 +337,52 @@ async def health():
     return {"status": "healthy", "ai_type": AI_TYPE}
 
 @app.post("/v1/chat/completions")
-async def chat_completions(request: Dict):
-    messages = request.get("messages", [])
-    model = request.get("model", "llama3.2")
+async def chat_completions(request: Request):
+    try:
+        body = await request.json()
+    except:
+        return {"error": "Invalid JSON body"}
+
+    messages = body.get("messages", [])
+    model = body.get("model", "llama3.2")
+    temperature = body.get("temperature", 0.7)
     system_prompt = f"You are a {AI_TITLES.get(AI_TYPE, 'healthcare')} assistant."
     full_messages = [{"role": "system", "content": system_prompt}] + messages
+
+    api_key = request.headers.get("X-API-Key") or API_KEY
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["X-API-Key"] = api_key
+
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
-                f"{OLLAMA_URL}/v1/chat/completions",
-                json={"model": model, "messages": full_messages}
+                f"{OLLAMA_URL}/chat/completions",
+                headers=headers,
+                json={"model": model, "messages": full_messages, "temperature": temperature}
             )
             if response.status_code == 200:
-                return response.json()
+                data = response.json()
+                if "choices" in data:
+                    return data
+                else:
+                    return {"error": f"Invalid AI response (no choices): {str(data)[:200]}", "raw": data}
+            else:
+                return {"error": f"AI service error {response.status_code}", "detail": response.text[:500]}
+    except httpx.ConnectError as e:
+        return {"error": f"Connection failed to {OLLAMA_URL}. Is the service reachable?", "detail": str(e)}
+    except httpx.TimeoutException:
+        return {"error": "AI service timed out after 120s"}
     except Exception as e:
-        return {"error": f"AI service unavailable: {str(e)}"}
-    return {"error": "AI service not available"}
+        return {"error": f"Unexpected error: {type(e).__name__}", "detail": str(e)}
 
 @app.post("/chat")
-async def chat(request: ChatRequest, req: Request):
-    api_key = req.headers.get("X-API-Key", API_KEY)
-    ollama_response = await call_ollama(request.message, request.context, api_key)
-    return {"response": ollama_response, "language": request.language, "confidence": 0.85}
+async def chat(request: ChatRequest):
+    api_key = request.headers.get("X-API-Key") or API_KEY
+    messages = request.messages or []
+    user_message = messages[-1]["content"] if messages else ""
+    ollama_response = await call_ollama(user_message, "general", api_key)
+    return {"response": ollama_response, "language": "en", "confidence": 0.85}
 
 @app.post("/clinical-notes")
 async def clinical_notes(text: str):
@@ -381,14 +415,17 @@ async def call_ollama(prompt: str, context: str, api_key: str = None) -> str:
             )
             if response.status_code == 200:
                 data = response.json()
-                return data["choices"][0]["message"]["content"]
+                if "choices" in data:
+                    return data["choices"][0]["message"]["content"]
+                elif "error" in data:
+                    return f"AI error: {data['error']}"
+            return f"AI service returned status {response.status_code}: {response.text}"
     except httpx.ConnectError as e:
-        return f"AI service unavailable. Could not connect to {OLLAMA_URL}. Error: {str(e)}"
+        return f"AI service unavailable. Could not connect. Error: {str(e)}"
     except httpx.TimeoutException:
         return "AI service unavailable. Request timed out."
     except Exception as e:
         return f"AI service unavailable. Error: {str(e)}"
-    return "AI service is not available."
 
 async def generate_clinical_notes(text: str) -> dict:
     notes = await call_ollama(f"Convert this dictation into structured clinical notes: {text}", "clinical documentation")

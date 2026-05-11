@@ -20,7 +20,8 @@ RUN pip install --no-cache-dir \
     openai \
     llama-index \
     pydantic \
-    python-dotenv
+    python-dotenv \
+    httpx
 
 COPY app.py .
 COPY requirements.txt .
