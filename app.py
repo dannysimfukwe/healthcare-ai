@@ -204,7 +204,7 @@ print(response.json())</pre>
         function addMessage(content, isUser = false) {{
             const div = document.createElement('div');
             div.className = `flex ${{isUser ? 'justify-end' : 'justify-start'}}`;
-            div.innerHTML = `<div class="${{isUser ? 'message-user' : 'message-ai'}} px-4 py-2 rounded-lg max-w-[80%] break-words">${{content.replace(/\n/g, '<br>')}}</div>`;
+            div.innerHTML = `<div class="${{isUser ? 'message-user' : 'message-ai'}} px-4 py-2 rounded-lg max-w-[80%] break-words">${{content.replace(/\\n/g, '<br>')}}</div>`;
             messagesDiv.appendChild(div);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }}
