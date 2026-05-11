@@ -103,9 +103,9 @@ LANDING_PAGE = """
                     </div>
                     <div class="chat-container p-4 flex flex-col h-96">
                         <div class="flex gap-2 mb-3">
-                            <input type="password" id="apiKeyInput"
+                            <input type="password" id="apiKeyInput" required
                                 class="flex-1 px-3 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                placeholder="Enter your API key (optional)">
+                                placeholder="Enter your API key">
                             <button type="button" id="saveApiKey"
                                 class="text-xs bg-gray-200 hover:bg-gray-300 px-3 py-1.5 rounded-lg transition">
                                 Save
@@ -113,7 +113,7 @@ LANDING_PAGE = """
                         </div>
                         <div id="messages" class="messages space-y-3 mb-4 flex-1 overflow-y-auto">
                             <div class="flex justify-center">
-                                <span class="text-xs text-gray-400">Conversation started</span>
+                                <span class="text-xs text-gray-400">Enter your API key above to start</span>
                             </div>
                         </div>
                         <form id="chatForm" class="flex gap-2 mt-auto">
@@ -234,7 +234,7 @@ print(response.json())</pre>
             try {{
                 const headers = {{ 'Content-Type': 'application/json' }};
                 const apiKey = localStorage.getItem('ai_api_key') || '';
-                if (apiKey) headers['X-API-Key'] = apiKey;
+                headers['X-API-Key'] = apiKey;
                 const res = await fetch(API_BASE_URL + '/v1/chat/completions', {{
                     method: 'POST',
                     headers,
