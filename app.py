@@ -183,7 +183,7 @@ print(response.json())</pre>
     </footer>
 
     <script>
-        const apiBaseUrl = '{api_base_url}';
+        const API_BASE_URL = 'https://ai-api.42helv.com';
         const messagesDiv = document.getElementById('messages');
         const chatForm = document.getElementById('chatForm');
         const messageInput = document.getElementById('messageInput');
@@ -235,7 +235,7 @@ print(response.json())</pre>
                 const headers = {{ 'Content-Type': 'application/json' }};
                 const apiKey = localStorage.getItem('ai_api_key') || '';
                 if (apiKey) headers['X-API-Key'] = apiKey;
-                const res = await fetch(apiBaseUrl + '/v1/chat/completions', {{
+                const res = await fetch(API_BASE_URL + '/v1/chat/completions', {{
                     method: 'POST',
                     headers,
                     body: JSON.stringify({{
