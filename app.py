@@ -27,9 +27,10 @@ class ChatResponse(BaseModel):
     language: str
     confidence: float
 
-OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "https://ai-api.42helv.com/v1")
 AI_TYPE = os.getenv("AI_TYPE", "medical_assistant")
 BASE_URL = os.getenv("SITE_BASE_URL", "")
+API_KEY = os.getenv("AI_API_KEY", "")
 
 AI_TITLES = {
     "medical_assistant": "Medical Assistant",
@@ -52,15 +53,20 @@ LANDING_PAGE = """
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         body {{ font-family: 'Inter', sans-serif; }}
-        .gradient-bg {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }}
-        .chat-container {{ height: 400px; }}
-        .messages {{ height: 340px; overflow-y: auto; }}
-        .message-ai {{ background: #f3f4f6; }}
-        .message-user {{ background: #667eea; color: white; }}
-        .typing-dot {{ animation: bounce 1.4s infinite ease-in-out both; }}
-        .typing-dot:nth-child(1) {{ animation-delay: -0.32s; }}
-        .typing-dot:nth-child(2) {{ animation-delay: -0.16s; }}
-        @keyframes bounce {{ 0%, 80%, 100% {{ transform: scale(0); }} 40% {{ transform: scale(1); }} }}
+        .gradient-bg {{ background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }}
+        .message-user {{ background: #f97316; color: white; }}
+        .message-ai {{ background: #fff7ed; color: #9a3412; }}
+        .text-orange-100 {{ color: rgba(255, 237, 213, 0.8); }}
+        .text-orange-700 {{ color: #c2410c; }}
+        .text-orange-900 {{ color: #9a3412; }}
+        .bg-orange-50 {{ background-color: #fff7ed; }}
+        .bg-orange-600 {{ background-color: #ea580c; }}
+        .border-orange-200 {{ border-color: #fed7aa; }}
+        .bg-orange-600:hover {{ background-color: #c2410c; }}
+        button.gradient-bg {{ background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }}
+        input:focus {{ border-color: #f97316; }}
+        .typing-dot {{ animation: typing 1.4s infinite; }}
+        @keyframes typing {{ 0%, 60%, 100% {{ opacity: 0.3; }} 30% {{ opacity: 1; }} }}
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -68,7 +74,7 @@ LANDING_PAGE = """
         <div class="max-w-6xl mx-auto px-4 flex justify-between items-center">
             <div>
                 <h1 class="text-2xl font-bold">{title}</h1>
-                <p class="text-purple-100 text-sm mt-1">AI-Powered Assistant</p>
+                <p class="text-orange-100 text-sm mt-1">AI-Powered Assistant</p>
             </div>
             <a href="{repo_url}" target="_blank"
                class="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition">
@@ -89,22 +95,31 @@ LANDING_PAGE = """
                             </div>
                             <div>
                                 <h2 class="font-semibold">{title}</h2>
-                                <p class="text-xs text-purple-100">Try it now</p>
+                                <p class="text-xs text-orange-100">Try it now</p>
                             </div>
                         </div>
                     </div>
-                    <div class="chat-container p-4">
-                        <div id="messages" class="messages space-y-3 mb-4">
+                    <div class="chat-container p-4 flex flex-col h-96">
+                        <div class="flex gap-2 mb-3">
+                            <input type="password" id="apiKeyInput"
+                                class="flex-1 px-3 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                placeholder="Enter your API key (optional)">
+                            <button type="button" id="saveApiKey"
+                                class="text-xs bg-gray-200 hover:bg-gray-300 px-3 py-1.5 rounded-lg transition">
+                                Save
+                            </button>
+                        </div>
+                        <div id="messages" class="messages space-y-3 mb-4 flex-1 overflow-y-auto">
                             <div class="flex justify-center">
                                 <span class="text-xs text-gray-400">Conversation started</span>
                             </div>
                         </div>
-                        <form id="chatForm" class="flex gap-2">
-                            <input type="text" id="messageInput"
-                                class="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                placeholder="Type your message..." required>
+                        <form id="chatForm" class="flex gap-2 mt-auto">
+                            <textarea type="text" id="messageInput" rows="2"
+                                class="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                                placeholder="Type your message..." required></textarea>
                             <button type="submit"
-                                class="gradient-bg text-white px-6 py-2 rounded-lg hover:opacity-90 transition">
+                                class="gradient-bg text-white px-6 py-2 rounded-lg hover:opacity-90 transition self-end">
                                 <i class="fas fa-paper-plane"></i>
                             </button>
                         </form>
@@ -123,13 +138,12 @@ LANDING_PAGE = """
             </div>
 
             <div class="space-y-6">
-                <div class="bg-white rounded-xl shadow p-6">
-                    <h3 class="font-semibold mb-4 flex items-center gap-2"><i class="fas fa-code"></i> Embed on Your Website</h3>
-                    <p class="text-sm text-gray-600 mb-4">Add this chat widget to any site:</p>
-                    <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs overflow-x-auto"><code>&lt;script src="{base_url}/widget.js"&gt;&lt;/script&gt;
-&lt;script&gt;
-  ChatWidget.init({{ apiUrl: '{base_url}/v1/chat/completions' }});
-&lt;/script&gt;</code></pre>
+                <div class="bg-orange-50 border border-orange-200 rounded-xl p-6">
+                    <h3 class="font-semibold text-orange-900 mb-2">Build Your Own</h3>
+                    <p class="text-sm text-orange-700 mb-4">Fork this template on GitHub, customize the AI behavior, and deploy your own assistant.</p>
+                    <a href="{repo_url}" target="_blank" class="inline-flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition text-sm">
+                        <i class="fab fa-github"></i> View on GitHub
+                    </a>
                 </div>
 
                 <div class="bg-white rounded-xl shadow p-6">
@@ -137,27 +151,20 @@ LANDING_PAGE = """
                     <div class="space-y-3">
                         <div>
                             <p class="text-xs font-semibold text-gray-500 mb-1">Python</p>
-                            <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs">import openai
-openai.api_base = "{base_url}/v1"
-response = openai.ChatCompletion.create(
-    model="llama3.2",
-    messages=[{{"role": "user", "content": "Hello"}}]
-)</pre>
+                            <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto">import httpx
+
+response = httpx.post("{base_url}/v1/chat/completions", json={{
+    "model": "llama3.2",
+    "messages": [{{"role": "user", "content": "Hello"}}]
+}})
+print(response.json())</pre>
                         </div>
                         <div>
                             <p class="text-xs font-semibold text-gray-500 mb-1">cURL</p>
-                            <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs">curl -X POST "{base_url}/v1/chat/completions" \\
+                            <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto">curl -X POST "{base_url}/v1/chat/completions" \\
   -d '{{"model": "llama3.2", "messages": [{{"role": "user", "content": "Hello"}}]}}'</pre>
                         </div>
                     </div>
-                </div>
-
-                <div class="bg-purple-50 border border-purple-200 rounded-xl p-6">
-                    <h3 class="font-semibold text-purple-900 mb-2">Build Your Own</h3>
-                    <p class="text-sm text-purple-700 mb-4">Fork this template on GitHub, customize the AI behavior, and deploy your own assistant.</p>
-                    <a href="{repo_url}" target="_blank" class="inline-flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition text-sm">
-                        <i class="fab fa-github"></i> View on GitHub
-                    </a>
                 </div>
             </div>
         </div>
@@ -172,11 +179,25 @@ response = openai.ChatCompletion.create(
         const messagesDiv = document.getElementById('messages');
         const chatForm = document.getElementById('chatForm');
         const messageInput = document.getElementById('messageInput');
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const saveApiKeyBtn = document.getElementById('saveApiKey');
+
+        const savedKey = localStorage.getItem('ai_api_key');
+        if (savedKey) apiKeyInput.value = savedKey;
+
+        saveApiKeyBtn.addEventListener('click', () => {{
+            const key = apiKeyInput.value.trim();
+            if (key) {{
+                localStorage.setItem('ai_api_key', key);
+                apiKeyInput.type = 'text';
+                setTimeout(() => {{ apiKeyInput.type = 'password'; }}, 1000);
+            }}
+        }});
 
         function addMessage(content, isUser = false) {{
             const div = document.createElement('div');
             div.className = `flex ${{isUser ? 'justify-end' : 'justify-start'}}`;
-            div.innerHTML = `<div class="${{isUser ? 'message-user' : 'message-ai'}} px-4 py-2 rounded-lg max-w-[80%]">${{content}}</div>`;
+            div.innerHTML = `<div class="${{isUser ? 'message-user' : 'message-ai'}} px-4 py-2 rounded-lg max-w-[80%] break-words">${{content.replace(/\\n/g, '<br>')}}</div>`;
             messagesDiv.appendChild(div);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }}
@@ -185,7 +206,7 @@ response = openai.ChatCompletion.create(
             const div = document.createElement('div');
             div.id = 'typing';
             div.className = 'flex justify-start';
-            div.innerHTML = `<div class="message-ai px-4 py-2 rounded-lg"><div class="flex gap-1"><span class="typing-dot w-2 h-2 bg-gray-400 rounded-full"></span><span class="typing-dot w-2 h-2 bg-gray-400 rounded-full"></span><span class="typing-dot w-2 h-2 bg-gray-400 rounded-full"></span></div></div>`;
+            div.innerHTML = `<div class="message-ai px-4 py-2 rounded-lg"><div class="flex gap-1"><span class="typing-dot w-2 h-2 bg-gray-400 rounded-full"></span><span class="typing-dot w-2 h-2 bg-gray-400 rounded-full" style="animation-delay:.2s"></span><span class="typing-dot w-2 h-2 bg-gray-400 rounded-full" style="animation-delay:.4s"></span></div></div>`;
             messagesDiv.appendChild(div);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }}
@@ -203,17 +224,27 @@ response = openai.ChatCompletion.create(
             messageInput.value = '';
             addTyping();
             try {{
-                const res = await fetch(baseUrl + '/chat', {{
+                const headers = {{ 'Content-Type': 'application/json' }};
+                const apiKey = localStorage.getItem('ai_api_key') || '';
+                if (apiKey) headers['X-API-Key'] = apiKey;
+                const res = await fetch(baseUrl + '/v1/chat/completions', {{
                     method: 'POST',
-                    headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ message: msg, language: 'en', context: 'general' }})
+                    headers,
+                    body: JSON.stringify({{
+                        model: 'llama3.2',
+                        messages: [{{"role": "user", "content": msg}}]
+                    }})
                 }});
                 const data = await res.json();
                 removeTyping();
-                addMessage(data.response || 'AI service unavailable');
+                if (data.choices && data.choices[0]) {{
+                    addMessage(data.choices[0].message.content);
+                }} else {{
+                    addMessage(data.error || 'AI service unavailable');
+                }}
             }} catch (e) {{
                 removeTyping();
-                addMessage('Error connecting to AI service.');
+                addMessage('Error connecting to AI service: ' + e.message);
             }}
         }});
     </script>
@@ -246,14 +277,14 @@ WIDGET_JS = """
         injectStyles: function() {
             const s = document.createElement('style');
             s.textContent = `
-                .chat-widget-btn { position: fixed; ${this.config.position}: 20px; bottom: 20px; width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); border: none; cursor: pointer; box-shadow: 0 4px 20px rgba(102,126,234,.4); z-index: 9999; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; }
+                .chat-widget-btn { position: fixed; ${this.config.position}: 20px; bottom: 20px; width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #f97316, #ea580c); border: none; cursor: pointer; box-shadow: 0 4px 20px rgba(249,115,22,.4); z-index: 9999; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; }
                 .chat-widget-window { position: fixed; ${this.config.position}: 20px; bottom: 90px; width: 380px; height: 500px; background: white; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.15); z-index: 9998; display: none; flex-direction: column; overflow: hidden; }
                 .chat-widget-window.open { display: flex; }
-                .chat-widget-header { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 16px; display: flex; align-items: center; gap: 12px; }
+                .chat-widget-header { background: linear-gradient(135deg, #f97316, #ea580c); color: white; padding: 16px; display: flex; align-items: center; gap: 12px; }
                 .chat-widget-messages { flex: 1; overflow-y: auto; padding: 16px; }
                 .chat-widget-input { display: flex; padding: 16px; gap: 8px; border-top: 1px solid #eee; }
                 .chat-widget-input input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; }
-                .chat-widget-input button { background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; }
+                .chat-widget-input button { background: linear-gradient(135deg, #f97316, #ea580c); color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; }
             `;
             document.head.appendChild(s);
         },
@@ -271,7 +302,7 @@ WIDGET_JS = """
         addMessage: function(content, isUser) {
             const d = document.createElement('div');
             d.style.cssText = `text-align:${isUser?'right':'left'};margin:8px 0;`;
-            d.innerHTML = `<span style="display:inline-block;padding:10px 14px;border-radius:12px;background:${isUser?'#667eea':'#f3f4f6'};color:${isUser?'white':'black'}">${content}</span>`;
+            d.innerHTML = `<span style="display:inline-block;padding:10px 14px;border-radius:12px;background:${isUser?'#f97316':'#fff7ed'};color:${isUser?'white':'#9a3412'}">${content}</span>`;
             document.getElementById('chatWidgetMessages').appendChild(d);
             document.getElementById('chatWidgetMessages').scrollTop = document.getElementById('chatWidgetMessages').scrollHeight;
         }
@@ -314,8 +345,9 @@ async def chat_completions(request: Dict):
     return {"error": "AI service not available"}
 
 @app.post("/chat")
-async def chat(request: ChatRequest):
-    ollama_response = await call_ollama(request.message, request.context)
+async def chat(request: ChatRequest, req: Request):
+    api_key = req.headers.get("X-API-Key", API_KEY)
+    ollama_response = await call_ollama(request.message, request.context, api_key)
     return {"response": ollama_response, "language": request.language, "confidence": 0.85}
 
 @app.post("/clinical-notes")
@@ -328,14 +360,18 @@ async def translate(text: str, from_lang: str = "en", to_lang: str = "ny"):
     translated = await translate_text(text, from_lang, to_lang)
     return {"translated": translated, "from": from_lang, "to": to_lang}
 
-async def call_ollama(prompt: str, context: str) -> str:
+async def call_ollama(prompt: str, context: str, api_key: str = None) -> str:
     system_prompt = f"You are a {AI_TITLES.get(AI_TYPE, 'healthcare')} assistant. Context: {context}. Provide accurate, helpful information."
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["X-API-Key"] = api_key
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
-                f"{OLLAMA_URL}/v1/chat/completions",
+                f"{OLLAMA_URL}/chat/completions",
+                headers=headers,
                 json={
-                    "model": os.getenv("OLLAMA_MODEL", "llama3.2"),
+                    "model": "llama3.2",
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": prompt}
@@ -346,6 +382,10 @@ async def call_ollama(prompt: str, context: str) -> str:
             if response.status_code == 200:
                 data = response.json()
                 return data["choices"][0]["message"]["content"]
+    except httpx.ConnectError as e:
+        return f"AI service unavailable. Could not connect to {OLLAMA_URL}. Error: {str(e)}"
+    except httpx.TimeoutException:
+        return "AI service unavailable. Request timed out."
     except Exception as e:
         return f"AI service unavailable. Error: {str(e)}"
     return "AI service is not available."
