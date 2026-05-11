@@ -18,7 +18,7 @@ app.add_middleware(
 )
 
 class ChatRequest(BaseModel):
-    model: Optional[str] = "llama3.2"
+    model: Optional[str] = "phi3:latest"
     messages: Optional[List[Dict]] = []
     temperature: Optional[float] = 0.7
     stream: Optional[bool] = False
@@ -159,7 +159,7 @@ response = httpx.post(
     "{api_base_url}/v1/chat/completions",
     headers={{"X-API-Key": "YOUR_API_KEY"}},
     json={{
-        "model": "llama3.2",
+        "model": "phi3:latest",
         "messages": [{{"role": "user", "content": "Hello"}}]
     }}
 )
@@ -170,7 +170,7 @@ print(response.json())</pre>
                             <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto">curl -X POST "{api_base_url}/v1/chat/completions" \
   -H "X-API-Key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{{"model": "llama3.2", "messages": [{{"role": "user", "content": "Hello"}}]}}'</pre>
+  -d '{{"model": "phi3:latest", "messages": [{{"role": "user", "content": "Hello"}}]}}'</pre>
                         </div>
                     </div>
                 </div>
@@ -239,7 +239,7 @@ print(response.json())</pre>
                     method: 'POST',
                     headers,
                     body: JSON.stringify({{
-                        model: 'llama3.2',
+                        model: 'phi3:latest',
                         messages: [{{'role': 'user', 'content': msg}}],
                         temperature: 0.7
                     }})
@@ -281,7 +281,7 @@ WIDGET_JS = """
                 fetch(this.config.apiUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model: 'llama3.2', messages: [{ role: 'user', content: msg }] })
+                    body: JSON.stringify({ model: 'phi3:latest', messages: [{ role: 'user', content: msg }] })
                 }).then(r => r.json()).then(d => this.addMessage(d.choices[0].message.content)).catch(() => this.addMessage('Error'));
             };
         },
@@ -350,7 +350,7 @@ async def chat_completions(request: Request):
         return {"error": "Invalid JSON body"}
 
     messages = body.get("messages", [])
-    model = body.get("model", "llama3.2")
+    model = body.get("model", "phi3:latest")
     temperature = body.get("temperature", 0.7)
     system_prompt = f"You are a {AI_TITLES.get(AI_TYPE, 'healthcare')} assistant."
     full_messages = [{"role": "system", "content": system_prompt}] + messages
@@ -411,7 +411,7 @@ async def call_ollama(prompt: str, context: str, api_key: str = None) -> str:
                 f"{AI_API_URL}/chat/completions",
                 headers=headers,
                 json={
-                    "model": "llama3.2",
+                    "model": "phi3:latest",
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": prompt}
